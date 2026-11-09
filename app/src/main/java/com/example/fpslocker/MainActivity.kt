@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
     private val SHIZUKU_CODE = 1001
     private var isGranted by mutableStateOf(false)
     private var isEnabled by mutableStateOf(false)
-    private var gamePackage by mutableStateOf("") // تم تفريغها لتكتب ما تريد
+    private var gamePackage by mutableStateOf("") 
     private var statusText by mutableStateOf("جاهز")
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
@@ -71,10 +71,10 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
                             onValueChange = { gamePackage = it },
                             label = { Text("اسم حزمة اللعبة", color = Color.Gray) },
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true, // يمنع النص من الالتفاف ويصلح مشكلة المسح
+                            singleLine = true, 
                             textStyle = LocalTextStyle.current.copy(
                                 color = Color.White,
-                                textDirection = TextDirection.Ltr // إجبار النص ليكون إنجليزي
+                                textDirection = TextDirection.Ltr 
                             ),
                             trailingIcon = {
                                 if (gamePackage.isNotEmpty()) {
@@ -150,50 +150,55 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
         }
     }
 
-    @Suppress("RestrictedApi")
     private fun toggleFpsLock(pkg: String, enable: Boolean) {
-    statusText = "جاري التنفيذ..."
-    val command = if (enable) {
-        "cmd game set --fps 120 $pkg && cmd game set --mode 1 $pkg"
-    } else {
-        "cmd game set --fps 0 $pkg && cmd game set --mode 0 $pkg"
-    }
-    
-    Thread {
-        try {
-            // البحث عن الدالة المخفية باستخدام Reflection
-            val method = Shizuku::class.java.declaredMethods.firstOrNull {
-                it.name == "newProcess" && it.parameterTypes.size == 3
-            } ?: throw Exception("لم يتم العثور على دالة newProcess")
-
-            method.isAccessible = true
-            
-            // تنفيذ الأمر
-            val process = method.invoke(null, arrayOf("sh", "-c", command), null, null) as Process
-            
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-            val errorReader = BufferedReader(InputStreamReader(process.errorStream))
-            val output = StringBuilder()
-            
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                output.append(line).append("\n")
-            }
-            var errLine: String?
-            while (errorReader.readLine().also { errLine = it } != null) {
-                output.append(errLine).append("\n")
-            }
-            
-            process.waitFor()
-            
-            runOnUiThread {
-                isEnabled = enable
-                statusText = if (output.isBlank()) "تم التنفيذ بنجاح" else "النتيجة: $output"
-            }
-        } catch (e: Exception) {
-            runOnUiThread {
-                statusText = "فشل: ${e.message}"
-            }
+        statusText = "جاري التنفيذ..."
+        val command = if (enable) {
+            "cmd game set --fps 120 $pkg && cmd game set --mode 1 $pkg"
+        } else {
+            "cmd game set --fps 0 $pkg && cmd game set --mode 0 $pkg"
         }
-    }.start()
+        
+        Thread {
+            try {
+                val method = Shizuku::class.java.declaredMethods.firstOrNull {
+                    it.name == "newProcess" && it.parameterTypes.size == 3
+                } ?: throw Exception("لم يتم العثور على دالة newProcess")
+
+                method.isAccessible = true
+                
+                val process = method.invoke(null, arrayOf("sh", "-c", command), null, null) as Process
+                
+                val reader = BufferedReader(InputStreamReader(process.inputStream))
+                val errorReader = BufferedReader(InputStreamReader(process.errorStream))
+                val output = StringBuilder()
+                
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    output.append(line).append("\n")
+                }
+                var errLine: String?
+                while (errorReader.readLine().also { errLine = it } != null) {
+                    output.append(errLine).append("\n")
+                }
+                
+                process.waitFor()
+                
+                runOnUiThread {
+                    isEnabled = enable
+                    statusText = if (output.isBlank()) "تم التنفيذ بنجاح" else "النتيجة: $output"
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    statusText = "فشل: ${e.message}"
+                }
+            }
+        }.start()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Shizuku.removeBinderReceivedListener(binderReceivedListener)
+        Shizuku.removeBinderDeadListener(binderDeadListener)
+        Shizuku.removeRequestPermissionResultListener(this)
+    }
 }
