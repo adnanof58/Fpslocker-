@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
     private val SHIZUKU_CODE = 1001
     private var isGranted by mutableStateOf(false)
     private var isEnabled by mutableStateOf(false)
-    private var packageName by mutableStateOf("com.tencent.ig")
+    private var gamePackage by mutableStateOf("com.tencent.ig")
     private var statusText by mutableStateOf("جاهز")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
 
                         OutlinedTextField(
                             value = packageName,
-                            onValueChange = { packageName = it },
+                            onValueChange = { gamePackage = it },
                             label = { Text("اسم حزمة اللعبة", color = Color.Gray) },
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
                                     requestShizuku()
                                 } else {
                                     isEnabled = !isEnabled
-                                    toggleFpsLock(packageName, isEnabled)
+                                    toggleFpsLock(gamePackage, isEnabled)
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
