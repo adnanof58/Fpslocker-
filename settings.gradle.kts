@@ -10,7 +10,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://api.xposed.info/") // لـ Shizuku
+        maven("https://api.xposed.info/")
     }
 }
 rootProject.name = "fpslocker"
