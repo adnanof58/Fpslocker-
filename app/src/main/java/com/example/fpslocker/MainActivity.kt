@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
                         verticalArrangement = Arrangement.Center
                     ) {
                         Text(
-                            text = "وضع الشاشة: ${if (isGranted) "متصل ✅" else "غير متصل ❌"}",
+                            text = "وضع الشيزوكو: ${if (isGranted) "متصل" else "غير متصل"}",
                             color = if (isGranted) Color.Green else Color.Red,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
@@ -132,11 +132,8 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
                 val process = method.invoke(null, arrayOf("sh", "-c", command), null, null) as Process
                 
                 val reader = BufferedReader(InputStreamReader(process.inputStream))
-                val output = StringBuilder()
                 var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    output.append(line).append("\n")
-                }
+                while (reader.readLine().also { line = it } != null) { }
                 process.waitFor()
                 
                 runOnUiThread {
