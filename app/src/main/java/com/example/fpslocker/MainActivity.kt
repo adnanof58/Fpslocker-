@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import rikka.shizuku.Shizuku
@@ -23,14 +24,28 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
     private val SHIZUKU_CODE = 1001
     private var isGranted by mutableStateOf(false)
     private var isEnabled by mutableStateOf(false)
-    private var gamePackage by mutableStateOf("com.tencent.ig")
+    private var gamePackage by mutableStateOf("") // تم تفريغها لتكتب ما تريد
     private var statusText by mutableStateOf("جاهز")
+
+    private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
+        runOnUiThread {
+            checkShizukuPermission()
+        }
+    }
+
+    private val binderDeadListener = Shizuku.OnBinderDeadListener {
+        runOnUiThread {
+            isGranted = false
+            statusText = "انقطع الاتصال بـ Shizuku"
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
+        Shizuku.addBinderDeadListener(binderDeadListener)
         Shizuku.addRequestPermissionResultListener(this)
-        checkShizukuPermission()
 
         setContent {
             MaterialTheme {
@@ -52,13 +67,26 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
                         Spacer(modifier = Modifier.height(24.dp))
 
                         OutlinedTextField(
-                            value = packageName,
+                            value = gamePackage,
                             onValueChange = { gamePackage = it },
                             label = { Text("اسم حزمة اللعبة", color = Color.Gray) },
                             modifier = Modifier.fillMaxWidth(),
+                            singleLine = true, // يمنع النص من الالتفاف ويصلح مشكلة المسح
+                            textStyle = LocalTextStyle.current.copy(
+                                color = Color.White,
+                                textDirection = TextDirection.Ltr // إجبار النص ليكون إنجليزي
+                            ),
+                            trailingIcon = {
+                                if (gamePackage.isNotEmpty()) {
+                                    TextButton(onClick = { gamePackage = "" }) {
+                                        Text("مسح", color = Color.Red)
+                                    }
+                                }
+                            },
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
+                                focusedBorderColor = Color(0xFF00B4D8),
+                                unfocusedBorderColor = Color.Gray,
+                                cursorColor = Color(0xFF00B4D8)
                             )
                         )
                         
@@ -68,9 +96,11 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
                             onClick = {
                                 if (!isGranted) {
                                     requestShizuku()
-                                } else {
+                                } else if (gamePackage.isNotBlank()) {
                                     isEnabled = !isEnabled
                                     toggleFpsLock(gamePackage, isEnabled)
+                                } else {
+                                    statusText = "الرجاء كتابة اسم الحزمة أولاً"
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -86,7 +116,11 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
                         }
                         
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text(text = statusText, color = Color.Yellow)
+                        Text(
+                            text = statusText, 
+                            color = Color.Yellow,
+                            modifier = Modifier.padding(8.dp)
+                        )
                     }
                 }
             }
@@ -94,15 +128,17 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
     }
 
     private fun checkShizukuPermission() {
+        if (!Shizuku.pingBinder()) return
         if (Shizuku.isPreV11() || Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
             isGranted = true
+            statusText = "جاهز للاستخدام"
         } else {
             requestShizuku()
         }
     }
 
     private fun requestShizuku() {
-        if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+        if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
             Shizuku.requestPermission(SHIZUKU_CODE)
         }
     }
@@ -110,38 +146,46 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
     override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
         if (requestCode == SHIZUKU_CODE) {
             isGranted = grantResult == PackageManager.PERMISSION_GRANTED
+            if (isGranted) statusText = "تم منح الصلاحية"
         }
     }
 
+    @Suppress("RestrictedApi")
     private fun toggleFpsLock(pkg: String, enable: Boolean) {
         statusText = "جاري التنفيذ..."
         val command = if (enable) {
             "cmd game set --fps 120 $pkg && cmd game set --mode 1 $pkg"
         } else {
-            "cmd game set --fps 0 $pkg && cmd game reset $pkg"
+            "cmd game set --fps 0 $pkg && cmd game set --mode 0 $pkg"
         }
         
         Thread {
             try {
-                val method = Shizuku::class.java.getMethod(
-                    "newProcess", 
-                    Array<String>::class.java, 
-                    Array<String>::class.java, 
-                    String::class.java
-                )
-                val process = method.invoke(null, arrayOf("sh", "-c", command), null, null) as Process
+                // استدعاء مباشر بدون Reflection لتجنب خطأ NoSuchMethodException
+                val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
                 
                 val reader = BufferedReader(InputStreamReader(process.inputStream))
+                val errorReader = BufferedReader(InputStreamReader(process.errorStream))
+                val output = StringBuilder()
+                
                 var line: String?
-                while (reader.readLine().also { line = it } != null) { }
+                while (reader.readLine().also { line = it } != null) {
+                    output.append(line).append("\n")
+                }
+                var errLine: String?
+                while (errorReader.readLine().also { errLine = it } != null) {
+                    output.append(errLine).append("\n")
+                }
+                
                 process.waitFor()
                 
                 runOnUiThread {
-                    statusText = if (enable) "تم التفعيل بنجاح" else "تم الإيقاف بنجاح"
+                    isEnabled = enable
+                    statusText = if (output.isBlank()) "تم التنفيذ بنجاح" else "النتيجة: $output"
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    statusText = "خطأ: ${e.message}"
+                    statusText = "فشل: ${e.message}"
                 }
             }
         }.start()
@@ -149,6 +193,8 @@ class MainActivity : ComponentActivity(), Shizuku.OnRequestPermissionResultListe
 
     override fun onDestroy() {
         super.onDestroy()
+        Shizuku.removeBinderReceivedListener(binderReceivedListener)
+        Shizuku.removeBinderDeadListener(binderDeadListener)
         Shizuku.removeRequestPermissionResultListener(this)
     }
 }
